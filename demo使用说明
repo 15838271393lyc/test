@@ -1,0 +1,10 @@
+
+1.编译并打包 Agent
+使用 Maven 编译并打包项目，生成 api-agent.jar。
+2.启动 Java 应用程序
+使用以下命令启动 Java 应用程序，加载我们的 Agent：
+java -javaagent:/path/to/api-agent.jar -jar your-application.jar
+3.测试 API
+发送 GET 和 POST 请求到目标服务，触发 API 信息的收集。
+4.查看结果
+查看生成的 api_info.json 文件，确认 API 信息是否正确捕获
