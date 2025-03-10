@@ -1,0 +1,96 @@
+1.Agent主类
+public class ApiAgent {
+    public static void premain(String agentArgs, Instrumentation inst) {
+        inst.addTransformer(new ApiClassFileTransformer());
+    }
+}
+
+2.字节码增强类
+import java.lang.instrument.ClassFileTransformer;
+import java.lang.instrument.IllegalClassFormatException;
+import java.security.ProtectionDomain;
+import java.util.Map;
+
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.MethodInsnNode;
+import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.VarInsnNode;
+
+public class ApiClassFileTransformer implements ClassFileTransformer, Opcodes {
+    @Override
+    public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined, ProtectionDomain protectionDomain, byte[] classfileBuffer) throws IllegalClassFormatException {
+        if (className.startsWith("org/javaweb/vuln/controller/")) {
+            ClassNode classNode = new ClassNode();
+            ClassReader classReader = new ClassReader(classfileBuffer);
+            classReader.accept(classNode, 0);
+
+            for (MethodNode methodNode : classNode.methods) {
+                if (methodNode.name.startsWith("doGet") || methodNode.name.startsWith("doPost")) {
+                    methodNode.instructions.insert(new VarInsnNode(ALOAD, 1));
+                    methodNode.instructions.insert(new MethodInsnNode(INVOKESTATIC, "com/example/api/ApiCollector", "collectApi", "(Ljavax/servlet/http/HttpServletRequest;)V", false));
+                }
+            }
+
+            ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+            classNode.accept(classWriter);
+            return classWriter.toByteArray();
+        }
+        return null;
+    }
+}
+
+3.ApI信息收集类
+import javax.servlet.http.HttpServletRequest;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public class ApiCollector {
+    private static final Map<String, List<ApiInfo>> apiMap = new HashMap<>();
+
+    public static void collectApi(HttpServletRequest request) {
+        String requestUri = request.getRequestURI();
+        String method = request.getMethod();
+
+        List<ApiInfo> apiInfos = apiMap.computeIfAbsent(requestUri, k -> new ArrayList<>());
+        ApiInfo apiInfo = new ApiInfo(method, requestUri, request.getParameterMap());
+
+        apiInfos.add(apiInfo);
+
+        // 将 API 信息写入 JSON 文件
+        writeToJsonFile();
+    }
+
+    private static void writeToJsonFile() {
+        // 使用 JSON 库将 apiMap 转换为 JSON 格式并写入文件
+        // 这里使用 Gson 作为示例
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        String json = gson.toJson(apiMap);
+
+        try (FileWriter writer = new FileWriter("api_info.json")) {
+            writer.write(json);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static class ApiInfo {
+        private String method;
+        private String path;
+        private Map<String, String[]> parameters;
+
+        public ApiInfo(String method, String path, Map<String, String[]> parameters) {
+            this.method = method;
+            this.path = path;
+            this.parameters = parameters;
+        }
+
+        // Getter 和 Setter 方法
+    }
+}
